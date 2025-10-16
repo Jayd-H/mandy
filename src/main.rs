@@ -2,8 +2,177 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct Config {
+    page: PageConfig,
+    fonts: FontsConfig,
+    headings: HeadingsConfig,
+    spacing: SpacingConfig,
+    code_blocks: CodeBlocksConfig,
+    syntax_highlighting: SyntaxHighlightingConfig,
+    images: ImagesConfig,
+    title_page: TitlePageConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageConfig {
+    margin: String,
+    first_page_top_margin: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct FontsConfig {
+    body_family: String,
+    body_size: String,
+    code_family: String,
+    inline_code_size: String,
+    block_code_size: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HeadingsConfig {
+    h1_size: String,
+    h1_align: String,
+    h1_page_break_before: bool,
+    h2_size: String,
+    h2_page_break_before: bool,
+    h3_size: String,
+    h4_size: String,
+    h5_size: String,
+    h6_size: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SpacingConfig {
+    line_height: String,
+    paragraph_margin: String,
+    h1_bottom_margin: String,
+    h2_bottom_margin: String,
+    h3_margins: String,
+    h4_margins: String,
+    h5_margins: String,
+    h6_margins: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodeBlocksConfig {
+    background_color: String,
+    border: String,
+    padding: String,
+    margin: String,
+    word_wrap: bool,
+    page_break_inside: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct SyntaxHighlightingConfig {
+    theme: String,
+    enabled: bool,
+    text_color: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImagesConfig {
+    show_captions: bool,
+    caption_size: String,
+    caption_style: String,
+    caption_align: String,
+    caption_color: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TitlePageConfig {
+    extract_header: bool,
+    first_paragraph_size: String,
+}
+
+fn load_config() -> Config {
+    let config_path = "config.json";
+    
+    if Path::new(config_path).exists() {
+        let config_content = fs::read_to_string(config_path)
+            .expect("Failed to read config.json");
+        match serde_json::from_str(&config_content) {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("Error parsing config.json: {}", e);
+                eprintln!("Using default configuration instead.");
+                eprintln!("Please check your config.json file or delete it to regenerate.");
+                get_default_config()
+            }
+        }
+    } else {
+        eprintln!("Warning: config.json not found, using default configuration");
+        get_default_config()
+    }
+}
+
+fn get_default_config() -> Config {
+    serde_json::from_str(r##"{
+        "page": {
+            "margin": "1in",
+            "first_page_top_margin": "2in"
+        },
+        "fonts": {
+            "body_family": "Times New Roman",
+            "body_size": "12pt",
+            "code_family": "Courier New",
+            "inline_code_size": "12pt",
+            "block_code_size": "9pt"
+        },
+        "headings": {
+            "h1_size": "24pt",
+            "h1_align": "center",
+            "h1_page_break_before": true,
+            "h2_size": "16pt",
+            "h2_page_break_before": true,
+            "h3_size": "14pt",
+            "h4_size": "13pt",
+            "h5_size": "12pt",
+            "h6_size": "12pt"
+        },
+        "spacing": {
+            "line_height": "1.25",
+            "paragraph_margin": "12pt",
+            "h1_bottom_margin": "12pt",
+            "h2_bottom_margin": "16pt",
+            "h3_margins": "24pt 0 12pt 0",
+            "h4_margins": "20pt 0 10pt 0",
+            "h5_margins": "16pt 0 8pt 0",
+            "h6_margins": "16pt 0 8pt 0"
+        },
+        "code_blocks": {
+            "background_color": "transparent",
+            "border": "none",
+            "padding": "0",
+            "margin": "6pt 0",
+            "word_wrap": true,
+            "page_break_inside": false
+        },
+        "syntax_highlighting": {
+            "theme": "monokai",
+            "enabled": true,
+            "text_color": "#333"
+        },
+        "images": {
+            "show_captions": true,
+            "caption_size": "10pt",
+            "caption_style": "italic",
+            "caption_align": "center",
+            "caption_color": "#666"
+        },
+        "title_page": {
+            "extract_header": true,
+            "first_paragraph_size": "16pt"
+        }
+    }"##).expect("Failed to parse default config")
+}
 
 fn main() {
+    let config = load_config();
+    
     let args: Vec<String> = env::args().collect();
 
     let md_path = if args.len() < 2 {
@@ -24,241 +193,15 @@ fn main() {
 
     let markdown_content = fs::read_to_string(&md_path).expect("Failed to read markdown file");
 
-    let (header_text, processed_markdown) = extract_header(&markdown_content);
+    let (header_text, processed_markdown) = if config.title_page.extract_header {
+        extract_header(&markdown_content)
+    } else {
+        (String::new(), markdown_content)
+    };
 
     let html = markdown_to_html(&processed_markdown);
 
-    let full_html = format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', (event) => {{
-            document.querySelectorAll('pre code').forEach((block) => {{
-                hljs.highlightBlock(block);
-            }});
-            
-            document.querySelectorAll('img').forEach((img) => {{
-                if (img.alt) {{
-                    const figure = document.createElement('figure');
-                    figure.style.margin = '12pt 0';
-                    figure.style.pageBreakInside = 'avoid';
-                    
-                    img.parentNode.insertBefore(figure, img);
-                    figure.appendChild(img);
-                    
-                    const caption = document.createElement('figcaption');
-                    caption.textContent = img.alt;
-                    caption.style.fontSize = '10pt';
-                    caption.style.fontStyle = 'italic';
-                    caption.style.textAlign = 'center';
-                    caption.style.marginTop = '6pt';
-                    caption.style.color = '#666';
-                    figure.appendChild(caption);
-                }}
-            }});
-        }});
-    </script>
-    <style>
-        @page {{
-            margin: 1in;
-        }}
-        
-        @page :first {{
-            margin-top: 2in;
-            margin-bottom: 1in;
-            margin-left: 1in;
-            margin-right: 1in;
-            @top-center {{
-                content: "{}";
-                font-family: 'Times New Roman', serif;
-                font-size: 12pt;
-            }}
-            @bottom-right {{
-                content: none;
-            }}
-        }}
-        
-        @page {{
-            @bottom-right {{
-                content: counter(page);
-                font-family: 'Times New Roman', serif;
-                font-size: 12pt;
-            }}
-        }}
-        
-        body {{
-            font-family: 'Times New Roman', serif;
-            line-height: 1.25;
-            font-size: 12pt;
-            counter-reset: page 1;
-        }}
-        
-        h1 {{
-            font-size: 24pt;
-            font-weight: bold;
-            margin: 0 0 12pt 0;
-            padding: 0;
-            page-break-before: always;
-            text-align: center;
-        }}
-        
-        h1:first-of-type {{
-            page-break-before: avoid;
-        }}
-        
-        h1:first-of-type + p {{
-            font-size: 16pt;
-        }}
-        
-        .h1-page {{
-            margin-top: 2in;
-        }}
-        
-        h2 {{
-            font-size: 16pt;
-            font-weight: bold;
-            margin: 0 0 16pt 0;
-            padding: 0;
-            page-break-before: always;
-        }}
-        
-        h3 {{
-            font-size: 14pt;
-            font-weight: bold;
-            margin: 24pt 0 12pt 0;
-        }}
-        
-        h4 {{
-            font-size: 13pt;
-            font-weight: bold;
-            margin: 20pt 0 10pt 0;
-        }}
-        
-        h5 {{
-            font-size: 12pt;
-            font-weight: bold;
-            margin: 16pt 0 8pt 0;
-        }}
-        
-        h6 {{
-            font-size: 12pt;
-            font-weight: bold;
-            font-style: italic;
-            margin: 16pt 0 8pt 0;
-        }}
-        
-        p {{
-            margin: 0 0 12pt 0;
-        }}
-        
-        code {{
-            font-family: 'Courier New', monospace;
-            font-size: 12pt;
-            background-color: transparent !important;
-            padding: 0;
-            color: #333 !important;
-        }}
-        
-        pre {{
-            font-family: 'Courier New', monospace;
-            font-size: 9pt;
-            background-color: transparent !important;
-            padding: 0;
-            margin: 6pt 0;
-            border: none;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            page-break-inside: avoid;
-        }}
-        
-        pre code {{
-            font-size: 9pt;
-            background-color: transparent !important;
-            padding: 0;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            color: #333 !important;
-        }}
-        
-        .hljs {{
-            background-color: transparent !important;
-            color: #333 !important;
-        }}
-        
-        .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link {{
-            color: #0000ff !important;
-        }}
-        
-        .hljs-string, .hljs-title, .hljs-name, .hljs-type, .hljs-attribute, .hljs-symbol, .hljs-bullet, .hljs-built_in, .hljs-addition, .hljs-variable, .hljs-template-tag, .hljs-template-variable {{
-            color: #d73a49 !important;
-        }}
-        
-        .hljs-comment, .hljs-quote, .hljs-deletion, .hljs-meta {{
-            color: #6a737d !important;
-        }}
-        
-        .hljs-number {{
-            color: #005cc5 !important;
-        }}
-        
-        blockquote {{
-            border-left: 3px solid #ccc;
-            padding-left: 12pt;
-            margin-left: 0;
-            margin: 12pt 0;
-            color: #666;
-        }}
-        
-        ul, ol {{
-            margin: 12pt 0;
-            padding-left: 24pt;
-        }}
-        
-        li {{
-            margin: 6pt 0;
-        }}
-        
-        table {{
-            border-collapse: collapse;
-            width: 100%;
-            margin: 12pt 0;
-        }}
-        
-        th, td {{
-            border: 1px solid #000;
-            padding: 6pt;
-            text-align: left;
-        }}
-        
-        th {{
-            font-weight: bold;
-            background-color: #f5f5f5;
-        }}
-        
-        img {{
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 0 auto;
-        }}
-        
-        figure {{
-            margin: 12pt 0;
-            page-break-inside: avoid;
-        }}
-    </style>
-</head>
-<body>
-{}
-</body>
-</html>"#,
-        header_text,
-        html
-    );
+    let full_html = generate_html(&config, &header_text, &html);
 
     let temp_html_path = Path::new(&md_path).with_extension("temp.html");
     fs::write(&temp_html_path, full_html).expect("Failed to write temporary HTML file");
@@ -341,6 +284,328 @@ fn main() {
         eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
         std::process::exit(1);
     }
+}
+
+fn generate_html(config: &Config, header_text: &str, html_content: &str) -> String {
+    let h1_page_break = if config.headings.h1_page_break_before {
+        "page-break-before: always;"
+    } else {
+        ""
+    };
+    
+    let h2_page_break = if config.headings.h2_page_break_before {
+        "page-break-before: always;"
+    } else {
+        ""
+    };
+    
+    let pre_page_break = if !config.code_blocks.page_break_inside {
+        "page-break-inside: avoid;"
+    } else {
+        ""
+    };
+    
+    let word_wrap_styles = if config.code_blocks.word_wrap {
+        "white-space: pre-wrap; word-wrap: break-word;"
+    } else {
+        ""
+    };
+    
+    let syntax_theme = &config.syntax_highlighting.theme;
+    let syntax_link = if config.syntax_highlighting.enabled {
+        format!(r#"<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/{}.min.css">"#, syntax_theme)
+    } else {
+        String::new()
+    };
+    
+    let image_caption_script = if config.images.show_captions {
+        format!(r#"
+            document.querySelectorAll('img').forEach((img) => {{
+                if (img.alt) {{
+                    const figure = document.createElement('figure');
+                    figure.style.margin = '12pt 0';
+                    figure.style.pageBreakInside = 'avoid';
+                    
+                    img.parentNode.insertBefore(figure, img);
+                    figure.appendChild(img);
+                    
+                    const caption = document.createElement('figcaption');
+                    caption.textContent = img.alt;
+                    caption.style.fontSize = '{}';
+                    caption.style.fontStyle = '{}';
+                    caption.style.textAlign = '{}';
+                    caption.style.marginTop = '6pt';
+                    caption.style.color = '{}';
+                    figure.appendChild(caption);
+                }}
+            }});"#,
+            config.images.caption_size,
+            config.images.caption_style,
+            config.images.caption_align,
+            config.images.caption_color
+        )
+    } else {
+        String::new()
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    {}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {{
+            document.querySelectorAll('pre code').forEach((block) => {{
+                hljs.highlightBlock(block);
+            }});
+            {}
+        }});
+    </script>
+    <style>
+        @page {{
+            margin: {};
+        }}
+        
+        @page :first {{
+            margin-top: {};
+            margin-bottom: 1in;
+            margin-left: 1in;
+            margin-right: 1in;
+            @top-center {{
+                content: "{}";
+                font-family: '{}', serif;
+                font-size: {};
+            }}
+            @bottom-right {{
+                content: none;
+            }}
+        }}
+        
+        @page {{
+            @bottom-right {{
+                content: counter(page);
+                font-family: '{}', serif;
+                font-size: {};
+            }}
+        }}
+        
+        body {{
+            font-family: '{}', serif;
+            line-height: {};
+            font-size: {};
+            counter-reset: page 1;
+        }}
+        
+        h1 {{
+            font-size: {};
+            font-weight: bold;
+            margin: 0 0 {} 0;
+            padding: 0;
+            {}
+            text-align: {};
+        }}
+        
+        h1:first-of-type {{
+            page-break-before: avoid;
+        }}
+        
+        h1:first-of-type + p {{
+            font-size: {};
+        }}
+        
+        .h1-page {{
+            margin-top: {};
+        }}
+        
+        h2 {{
+            font-size: {};
+            font-weight: bold;
+            margin: 0 0 {} 0;
+            padding: 0;
+            {}
+        }}
+        
+        h3 {{
+            font-size: {};
+            font-weight: bold;
+            margin: {};
+        }}
+        
+        h4 {{
+            font-size: {};
+            font-weight: bold;
+            margin: {};
+        }}
+        
+        h5 {{
+            font-size: {};
+            font-weight: bold;
+            margin: {};
+        }}
+        
+        h6 {{
+            font-size: {};
+            font-weight: bold;
+            font-style: italic;
+            margin: {};
+        }}
+        
+        p {{
+            margin: {};
+        }}
+        
+        code {{
+            font-family: '{}', monospace;
+            font-size: {};
+            background-color: {} !important;
+            padding: {};
+            color: {} !important;
+        }}
+        
+        pre {{
+            font-family: '{}', monospace;
+            font-size: {};
+            background-color: {} !important;
+            padding: {};
+            margin: {};
+            border: {};
+            {}
+            {}
+        }}
+        
+        pre code {{
+            font-size: {};
+            background-color: {} !important;
+            padding: 0;
+            {}
+            color: {} !important;
+        }}
+        
+        .hljs {{
+            background-color: {} !important;
+            color: {} !important;
+        }}
+        
+        .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link {{
+            color: #0000ff !important;
+        }}
+        
+        .hljs-string, .hljs-title, .hljs-name, .hljs-type, .hljs-attribute, .hljs-symbol, .hljs-bullet, .hljs-built_in, .hljs-addition, .hljs-variable, .hljs-template-tag, .hljs-template-variable {{
+            color: #d73a49 !important;
+        }}
+        
+        .hljs-comment, .hljs-quote, .hljs-deletion, .hljs-meta {{
+            color: #6a737d !important;
+        }}
+        
+        .hljs-number {{
+            color: #005cc5 !important;
+        }}
+        
+        blockquote {{
+            border-left: 3px solid #ccc;
+            padding-left: 12pt;
+            margin-left: 0;
+            margin: 12pt 0;
+            color: #666;
+        }}
+        
+        ul, ol {{
+            margin: 12pt 0;
+            padding-left: 24pt;
+        }}
+        
+        li {{
+            margin: 6pt 0;
+        }}
+        
+        table {{
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12pt 0;
+        }}
+        
+        th, td {{
+            border: 1px solid #000;
+            padding: 6pt;
+            text-align: left;
+        }}
+        
+        th {{
+            font-weight: bold;
+            background-color: #f5f5f5;
+        }}
+        
+        img {{
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }}
+        
+        figure {{
+            margin: 12pt 0;
+            page-break-inside: avoid;
+        }}
+    </style>
+</head>
+<body>
+{}
+</body>
+</html>"#,
+        syntax_link,
+        image_caption_script,
+        config.page.margin,
+        config.page.first_page_top_margin,
+        header_text,
+        config.fonts.body_family,
+        config.fonts.body_size,
+        config.fonts.body_family,
+        config.fonts.body_size,
+        config.fonts.body_family,
+        config.spacing.line_height,
+        config.fonts.body_size,
+        config.headings.h1_size,
+        config.spacing.h1_bottom_margin,
+        h1_page_break,
+        config.headings.h1_align,
+        config.title_page.first_paragraph_size,
+        config.page.first_page_top_margin,
+        config.headings.h2_size,
+        config.spacing.h2_bottom_margin,
+        h2_page_break,
+        config.headings.h3_size,
+        config.spacing.h3_margins,
+        config.headings.h4_size,
+        config.spacing.h4_margins,
+        config.headings.h5_size,
+        config.spacing.h5_margins,
+        config.headings.h6_size,
+        config.spacing.h6_margins,
+        config.spacing.paragraph_margin,
+        config.fonts.code_family,
+        config.fonts.inline_code_size,
+        config.code_blocks.background_color,
+        config.code_blocks.padding,
+        config.syntax_highlighting.text_color,
+        config.fonts.code_family,
+        config.fonts.block_code_size,
+        config.code_blocks.background_color,
+        config.code_blocks.padding,
+        config.code_blocks.margin,
+        config.code_blocks.border,
+        word_wrap_styles,
+        pre_page_break,
+        config.fonts.block_code_size,
+        config.code_blocks.background_color,
+        word_wrap_styles,
+        config.syntax_highlighting.text_color,
+        config.code_blocks.background_color,
+        config.syntax_highlighting.text_color,
+        html_content
+    )
 }
 
 fn extract_header(markdown: &str) -> (String, String) {

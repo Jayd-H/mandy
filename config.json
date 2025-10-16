@@ -1,0 +1,58 @@
+{
+  "page": {
+    "margin": "1in",
+    "first_page_top_margin": "2in"
+  },
+  "fonts": {
+    "body_family": "Times New Roman",
+    "body_size": "12pt",
+    "code_family": "Courier New",
+    "inline_code_size": "12pt",
+    "block_code_size": "9pt"
+  },
+  "headings": {
+    "h1_size": "24pt",
+    "h1_align": "center",
+    "h1_page_break_before": true,
+    "h2_size": "16pt",
+    "h2_page_break_before": true,
+    "h3_size": "14pt",
+    "h4_size": "13pt",
+    "h5_size": "12pt",
+    "h6_size": "12pt"
+  },
+  "spacing": {
+    "line_height": "1.25",
+    "paragraph_margin": "12pt",
+    "h1_bottom_margin": "12pt",
+    "h2_bottom_margin": "16pt",
+    "h3_margins": "24pt 0 12pt 0",
+    "h4_margins": "20pt 0 10pt 0",
+    "h5_margins": "16pt 0 8pt 0",
+    "h6_margins": "16pt 0 8pt 0"
+  },
+  "code_blocks": {
+    "background_color": "transparent",
+    "border": "none",
+    "padding": "0",
+    "margin": "6pt 0",
+    "word_wrap": true,
+    "page_break_inside": false
+  },
+  "syntax_highlighting": {
+    "theme": "monokai",
+    "enabled": true,
+    "text_color": "#333"
+  },
+  "images": {
+    "show_captions": true,
+    "caption_size": "10pt",
+    "caption_style": "italic",
+    "caption_align": "center",
+    "caption_color": "#666"
+  },
+  "title_page": {
+    "extract_header": true,
+    "first_paragraph_size": "16pt"
+  }
+}
