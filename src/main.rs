@@ -6,33 +6,59 @@ use std::process::Command;
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        eprintln!("Usage: {} <path_to_markdown_file>", args[0]);
-        std::process::exit(1);
-    }
+    let md_path = if args.len() < 2 {
+        println!("Enter the path to the markdown file:");
+        let mut input = String::new();
+        std::io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read input");
+        input.trim().to_string()
+    } else {
+        args[1].clone()
+    };
 
-    let md_path = &args[1];
-
-    if !Path::new(md_path).exists() {
+    if !Path::new(&md_path).exists() {
         eprintln!("Error: File '{}' does not exist", md_path);
         std::process::exit(1);
     }
 
-    let markdown_content = fs::read_to_string(md_path).expect("Failed to read markdown file");
+    let markdown_content = fs::read_to_string(&md_path).expect("Failed to read markdown file");
 
-    let html = markdown_to_html(&markdown_content);
+    let (header_text, processed_markdown) = extract_header(&markdown_content);
+
+    let html = markdown_to_html(&processed_markdown);
 
     let full_html = format!(
         r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {{
             document.querySelectorAll('pre code').forEach((block) => {{
                 hljs.highlightBlock(block);
+            }});
+            
+            document.querySelectorAll('img').forEach((img) => {{
+                if (img.alt) {{
+                    const figure = document.createElement('figure');
+                    figure.style.margin = '12pt 0';
+                    figure.style.pageBreakInside = 'avoid';
+                    
+                    img.parentNode.insertBefore(figure, img);
+                    figure.appendChild(img);
+                    
+                    const caption = document.createElement('figcaption');
+                    caption.textContent = img.alt;
+                    caption.style.fontSize = '10pt';
+                    caption.style.fontStyle = 'italic';
+                    caption.style.textAlign = 'center';
+                    caption.style.marginTop = '6pt';
+                    caption.style.color = '#666';
+                    figure.appendChild(caption);
+                }}
             }});
         }});
     </script>
@@ -46,6 +72,11 @@ fn main() {
             margin-bottom: 1in;
             margin-left: 1in;
             margin-right: 1in;
+            @top-center {{
+                content: "{}";
+                font-family: 'Times New Roman', serif;
+                font-size: 12pt;
+            }}
             @bottom-right {{
                 content: none;
             }}
@@ -69,15 +100,18 @@ fn main() {
         h1 {{
             font-size: 24pt;
             font-weight: bold;
-            margin: 0;
+            margin: 0 0 12pt 0;
             padding: 0;
             page-break-before: always;
-            page-break-after: always;
-            text-align: left;
+            text-align: center;
         }}
         
         h1:first-of-type {{
             page-break-before: avoid;
+        }}
+        
+        h1:first-of-type + p {{
+            font-size: 16pt;
         }}
         
         .h1-page {{
@@ -123,22 +157,52 @@ fn main() {
         
         code {{
             font-family: 'Courier New', monospace;
-            background-color: #f5f5f5;
-            padding: 2px 4px;
+            font-size: 12pt;
+            background-color: transparent !important;
+            padding: 0;
+            color: #333 !important;
         }}
         
         pre {{
             font-family: 'Courier New', monospace;
-            background-color: #f5f5f5;
-            padding: 12pt;
-            margin: 12pt 0;
-            overflow: auto;
-            border: 1px solid #ddd;
+            font-size: 9pt;
+            background-color: transparent !important;
+            padding: 0;
+            margin: 6pt 0;
+            border: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            page-break-inside: avoid;
         }}
         
         pre code {{
-            background-color: transparent;
+            font-size: 9pt;
+            background-color: transparent !important;
             padding: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #333 !important;
+        }}
+        
+        .hljs {{
+            background-color: transparent !important;
+            color: #333 !important;
+        }}
+        
+        .hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link {{
+            color: #0000ff !important;
+        }}
+        
+        .hljs-string, .hljs-title, .hljs-name, .hljs-type, .hljs-attribute, .hljs-symbol, .hljs-bullet, .hljs-built_in, .hljs-addition, .hljs-variable, .hljs-template-tag, .hljs-template-variable {{
+            color: #d73a49 !important;
+        }}
+        
+        .hljs-comment, .hljs-quote, .hljs-deletion, .hljs-meta {{
+            color: #6a737d !important;
+        }}
+        
+        .hljs-number {{
+            color: #005cc5 !important;
         }}
         
         blockquote {{
@@ -179,7 +243,12 @@ fn main() {
             max-width: 100%;
             height: auto;
             display: block;
+            margin: 0 auto;
+        }}
+        
+        figure {{
             margin: 12pt 0;
+            page-break-inside: avoid;
         }}
     </style>
 </head>
@@ -187,13 +256,14 @@ fn main() {
 {}
 </body>
 </html>"#,
+        header_text,
         html
     );
 
-    let temp_html_path = Path::new(md_path).with_extension("temp.html");
+    let temp_html_path = Path::new(&md_path).with_extension("temp.html");
     fs::write(&temp_html_path, full_html).expect("Failed to write temporary HTML file");
 
-    let output_pdf_path = Path::new(md_path).with_extension("pdf");
+    let output_pdf_path = Path::new(&md_path).with_extension("pdf");
 
     let edge_paths = vec![
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -219,7 +289,7 @@ fn main() {
     let temp_html_absolute =
         fs::canonicalize(&temp_html_path).expect("Failed to get absolute path for HTML file");
 
-    let output_pdf_absolute = fs::canonicalize(Path::new(md_path).parent().unwrap())
+    let output_pdf_absolute = fs::canonicalize(Path::new(&md_path).parent().unwrap())
         .expect("Failed to get absolute path for output directory")
         .join(output_pdf_path.file_name().unwrap());
 
@@ -271,6 +341,23 @@ fn main() {
         eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
         std::process::exit(1);
     }
+}
+
+fn extract_header(markdown: &str) -> (String, String) {
+    let lines: Vec<&str> = markdown.lines().collect();
+    
+    if lines.len() >= 2 {
+        let first_line = lines[0].trim();
+        let second_line = lines[1].trim();
+        
+        if second_line.chars().all(|c| c == '-') && second_line.len() >= 3 {
+            let header_text = first_line.to_string();
+            let remaining_markdown = lines[2..].join("\n");
+            return (header_text, remaining_markdown);
+        }
+    }
+    
+    (String::new(), markdown.to_string())
 }
 
 fn markdown_to_html(markdown: &str) -> String {
