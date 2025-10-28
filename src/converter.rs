@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Debug, Deserialize)]
@@ -102,7 +102,6 @@ fn load_config() -> Config {
             Err(e) => {
                 eprintln!("Error parsing config.json: {}", e);
                 eprintln!("Using default configuration instead.");
-                eprintln!("Please check your config.json file or delete it to regenerate.");
                 get_default_config()
             }
         }
@@ -180,6 +179,7 @@ fn main() {
     let config = load_config();
 
     let args: Vec<String> = env::args().collect();
+
     let md_path = if args.len() < 2 {
         println!("Enter the path to the markdown file:");
         let mut input = String::new();
@@ -188,23 +188,26 @@ fn main() {
             .expect("Failed to read input");
         input.trim().to_string()
     } else {
-        let path = args[1].clone();
-        path.trim_matches('"').to_string()
+        args[1].trim_matches('"').to_string()
     };
 
-    let md_path_obj = Path::new(&md_path);
+    let md_path_buf = PathBuf::from(&md_path);
+    let md_path_absolute = match fs::canonicalize(&md_path_buf) {
+        Ok(p) => p,
+        Err(_) => md_path_buf.clone(),
+    };
 
-    if !md_path_obj.exists() {
-        eprintln!("Error: File '{}' does not exist", md_path);
-        eprintln!("Received path: {:?}", md_path);
-        eprintln!("Current directory: {:?}", env::current_dir());
+    if !md_path_absolute.exists() {
+        eprintln!("Error: File not found");
+        eprintln!("Received path: {}", md_path);
+        eprintln!("Absolute path: {}", md_path_absolute.display());
         eprintln!("\nPress Enter to exit...");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).ok();
         std::process::exit(1);
     }
 
-    let markdown_content = match fs::read_to_string(&md_path) {
+    let markdown_content = match fs::read_to_string(&md_path_absolute) {
         Ok(content) => content,
         Err(e) => {
             eprintln!("Error reading markdown file: {}", e);
@@ -224,10 +227,10 @@ fn main() {
     let html = markdown_to_html(&processed_markdown);
     let full_html = generate_html(&config, &header_text, &html);
 
-    let temp_html_path = Path::new(&md_path).with_extension("temp.html");
+    let temp_html_path = md_path_absolute.with_extension("temp.html");
     fs::write(&temp_html_path, full_html).expect("Failed to write temporary HTML file");
 
-    let output_pdf_path = Path::new(&md_path).with_extension("pdf");
+    let output_pdf_path = md_path_absolute.with_extension("pdf");
 
     let edge_paths = vec![
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -249,31 +252,16 @@ fn main() {
     let browser_path = browser_path
         .expect("Could not find Edge or Chrome. Please install Microsoft Edge or Chrome.");
 
-    let temp_html_absolute =
-        fs::canonicalize(&temp_html_path).expect("Failed to get absolute path for HTML file");
-    let output_pdf_absolute = fs::canonicalize(Path::new(&md_path).parent().unwrap())
-        .expect("Failed to get absolute path for output directory")
-        .join(output_pdf_path.file_name().unwrap());
-
-    println!("Using browser: {}", browser_path);
-    println!(
-        "Converting: {} -> {}",
-        md_path,
-        output_pdf_absolute.display()
-    );
-
     let temp_dir = env::temp_dir();
     let user_data_dir = temp_dir.join("mandy_browser_data");
 
-    let temp_html_str = temp_html_absolute.to_string_lossy().to_string();
+    let temp_html_str = temp_html_path.to_string_lossy().to_string();
     let cleaned_path = if temp_html_str.starts_with(r"\\?\") {
         temp_html_str[4..].to_string()
     } else {
         temp_html_str
     };
     let file_url = format!("file:///{}", cleaned_path.replace("\\", "/"));
-
-    println!("File URL: {}", file_url);
 
     let output = Command::new(browser_path)
         .arg("--headless=new")
@@ -284,21 +272,17 @@ fn main() {
         .arg("--disable-background-networking")
         .arg("--no-pdf-header-footer")
         .arg(format!("--user-data-dir={}", user_data_dir.display()))
-        .arg(format!("--print-to-pdf={}", output_pdf_absolute.display()))
+        .arg(format!("--print-to-pdf={}", output_pdf_path.display()))
         .arg(&file_url)
         .output()
         .expect("Failed to execute browser");
 
-    fs::remove_file(&temp_html_path).expect("Failed to remove temporary HTML file");
+    fs::remove_file(&temp_html_path).ok();
 
     if output.status.success() {
-        println!(
-            "PDF created successfully: {}",
-            output_pdf_absolute.display()
-        );
+        println!("PDF created successfully: {}", output_pdf_path.display());
     } else {
         eprintln!("Error: Browser failed to generate PDF");
-        eprintln!("STDOUT: {}", String::from_utf8_lossy(&output.stdout));
         eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
         std::process::exit(1);
     }

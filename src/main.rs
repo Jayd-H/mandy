@@ -207,7 +207,7 @@ fn add_context_menu(converter_path: &Path) -> Result<(), Box<dyn std::error::Err
     shell_key.0.set_value("", &"Convert to PDF with Mandy")?;
     shell_key
         .0
-        .set_value("Icon", &converter_path.to_string_lossy().to_string())?;
+        .set_value("Icon", &format!("{},0", converter_path.display()))?;
 
     let command_key = shell_key.0.create_subkey("command")?;
     let command = format!("\"{}\" \"%1\"", converter_path.display());
