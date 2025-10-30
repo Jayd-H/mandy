@@ -157,14 +157,14 @@ fn get_default_config() -> Config {
         "syntax_highlighting": {
             "theme": "monokai",
             "enabled": true,
-            "text_color": "#333"
+            "text_color": "#0f0f0fff"
         },
         "images": {
             "show_captions": true,
             "caption_size": "10pt",
             "caption_style": "italic",
             "caption_align": "center",
-            "caption_color": "#666"
+            "caption_color": "#2b2b2bff"
         },
         "title_page": {
             "extract_header": true,
