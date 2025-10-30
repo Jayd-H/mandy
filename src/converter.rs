@@ -157,7 +157,7 @@ fn get_default_config() -> Config {
         "syntax_highlighting": {
             "theme": "monokai",
             "enabled": true,
-            "text_color": "#0f0f0fff"
+            "text_color": "#0a0947ff"
         },
         "images": {
             "show_captions": true,
